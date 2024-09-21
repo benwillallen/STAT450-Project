@@ -1,0 +1,142 @@
+---
+title: "Simulated Data Sets"
+author: "Benjamin Allen and Trey McCray"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(skimr)
+library(plotly)
+library(timetk)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Simulated Data Set 1: Minimal Autocorrelation
+
+```{r}
+set.seed(24)
+n <- 1000
+var1 <- rnorm(n, 10, 3)
+var2 <- rnorm(n, 0, 0.01) 
+var3 <- rgamma(n, shape = 4)
+var4 <- rbinom(n, 5, 0.5)
+var5 <- rbinom(n, 1, 0.9)
+var6 <- rnorm(n)
+resvar <- (var5 + 1)*(2*var1 + 60*var2*var3 + var4^2)
+date <- as.Date(mdy("1/1/97"):(mdy("1/1/97")+n-1))
+sim_dat1 <- data.frame(date = date, resvar = resvar, var1 = var1, var2 = var2, var3 = var3, var4 = var4, var5 = var5, var6 = var6)
+```
+
+```{r}
+skim(sim_dat1)
+```
+
+```{r}
+pairs(sim_dat1)
+```
+
+## Simulated Data Set 2: Univariate Random Walk
+
+```{r}
+set.seed(1)
+n <- 1000
+resvar <- cumsum(2*rnorm(n, mean = 0, sd = 5))
+date <- as.Date(mdy("1/1/97"):(mdy("1/1/97")+n-1))
+sim_dat2 <- data.frame(date = date, resvar = resvar)
+```
+
+```{r}
+skim(sim_dat2)
+```
+
+```{r}
+ggplot(data = sim_dat2, mapping = aes(x = date, y = resvar)) +
+  geom_line() + theme_bw()
+```
+
+## Simulated Data Set 3: Significant Autocorrelation + Seasonality
+
+```{r}
+set.seed(14)
+n <- 1000
+resvar <- c(1)
+for (iter in 1:(n-1)) {
+  new_val <- resvar[iter] + sin(0.1*(iter+1)) + rnorm(1, sd = 2)
+  resvar <- append(resvar, new_val)
+}
+date <- as.Date(mdy("1/1/97"):(mdy("1/1/97")+n-1))
+sim_dat3 <- data.frame(date = date, resvar = resvar)
+```
+
+```{r}
+skim(sim_dat3)
+```
+
+```{r}
+ggplot(data = sim_dat3, mapping = aes(x = date, y = resvar)) +
+  geom_line() + theme_bw()
+```
+
+## Simulated Data Set 4: Significant Autocorrelation + Holiday Effects
+
+```{r}
+set.seed(24)
+n <- 2000
+date <- as.Date(mdy("1/1/97"):(mdy("1/1/97")+n-1))
+holiday <- ifelse(month(date) == 12 & day(date) > 15 & day(date) < 28, 1, 0)
+resvar <- c(1)
+for (iter in 1:(n-1)) {
+  new_val <- (holiday[iter+1])*5 + resvar[iter] + rnorm(1, sd = 6)
+  resvar <- append(resvar, new_val)
+}
+sim_dat4 <- data.frame(date = date, resvar = resvar, holiday = holiday)
+```
+
+```{r}
+ggplot(data = sim_dat4, mapping = aes(x = date, y = resvar, color = holiday)) +
+  geom_line() + theme_bw() + scale_color_gradient(low = "royalblue4", high = "red")
+```
+
+## Simulated Data Set 5: Multivariate Time Series + Complex Seasonality
+
+```{r}
+set.seed(7)
+n <- 5000
+date <- as.Date(mdy("1/1/97"):(mdy("1/1/97")+n-1))
+holiday <- ifelse(month(date) > 10 & day(date) > 25, 1, 0)
+var1 <- rgamma(n, shape = 5)
+var2 <- c(rnorm(1))
+var3 <- c(rbinom(1, 100, 0.5))
+yearly_comp <- 2*sin(0.017214206321*(1:n)) # 2pi / 365
+monthly_comp <- 5*sin(0.209439510239*(1:n)) # 2pi / 30
+weekly_comp <- -5*sin(0.897597901026*(1:n)) # 2pi / 7
+resvar <- c(1.1)
+for (iter in 1:(n-1)) {
+  new_var2 <- var2[iter] + 0.001*resvar[iter]*rnorm(1, sd = 10) + rnorm(1, sd = 5)
+  var2 <- append(var2, new_var2)
+  new_var3 <- var3[iter] - 0.001*var1[iter]*rnorm(1, sd = 10) - 0.001*resvar[iter]*rnorm(1, sd = 1) + rt(1, df = 10, ncp = 0)
+  var3 <- append(var3, new_var3)
+  new_resvar <- resvar[iter] + 5*(holiday[iter+1]) + 0.01*var1[iter+1] + 0.00001*var2[iter+1] + 0.0001*var3[iter+1] + rnorm(1, sd = 10) + yearly_comp[iter+1] + monthly_comp[iter+1] + weekly_comp[iter+1]
+  resvar <- append(resvar, new_resvar)
+}
+sim_dat5 <- data.frame(date = date, resvar = resvar, holiday = holiday, var1 = var1, var2 = var2, var3 = var3,
+                      yearly_comp = yearly_comp, monthly_comp = monthly_comp, weekly_comp = weekly_comp)
+```
+
+```{r}
+timeplot <- ggplot(data = sim_dat5, mapping = aes(x = date, y = resvar)) +
+  geom_line() + geom_line(mapping = aes(y = var2), color = "green") +
+  geom_line(mapping = aes(y = var3), color = "orange") + 
+  theme_bw() + scale_color_gradient(low = "royalblue4", high = "red")
+ggplotly(timeplot)
+```
+
+```{r}
+plot_seasonal_diagnostics(.data = sim_dat5, .date_var = date, .value = resvar)
+plot_stl_diagnostics(.data = sim_dat5, .date_var = date, .value = resvar, .frequency = "1 year") # Yearly seasonality
+plot_stl_diagnostics(.data = sim_dat5, .date_var = date, .value = resvar, .frequency = "30 days") # Monthly seasonality
+plot_stl_diagnostics(.data = sim_dat5, .date_var = date, .value = resvar, .frequency = "1 week") # Weekly seasonality
+```
+
